@@ -40,8 +40,8 @@ function UnlockForm() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!username || !email || !selectedDesc) {
-      setError('Todos los campos son requeridos');
+    if (!username || !selectedDesc) {
+      setError('Usuario y descripción son requeridos');
       return;
     }
 
@@ -53,7 +53,7 @@ function UnlockForm() {
         },
         body: JSON.stringify({
           username,
-          email,
+          email: email || null,
           selectedDesc
         }),
       });
@@ -103,7 +103,6 @@ function UnlockForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Ingrese su correo registrado"
-              required
             />
           </div>
           <div className="form-group">

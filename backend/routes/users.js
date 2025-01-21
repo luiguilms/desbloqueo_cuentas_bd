@@ -76,93 +76,103 @@ router.get('/users/user-options/:username', async (req, res) => {
   }
 });
 
-// Ruta para desbloquear usuario
 router.post('/users/unlock', async (req, res) => {
- const { username, email, selectedDesc } = req.body;
+  const { username, email, selectedDesc } = req.body;
 
- if (!username || !email || !selectedDesc) return res.status(400).send({
-   message: "El nombre de usuario, correo y descripción son requeridos"
- });
+  if (!username || !selectedDesc) {
+    return res.status(400).send({
+      message: "El nombre de usuario y la descripción son requeridos",
+    });
+  }
 
- let connection;
- try {
-   connection = await getConnection();
-   
-   // Primero verificamos solo la existencia del usuario en la base
-   const userExists = await connection.execute(
-     `SELECT 1 FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1`,
-     [username.toUpperCase()]
-   );
+  let connection;
+  try {
+    connection = await getConnection();
 
-   if (userExists.rows.length === 0) {
-     return res.status(400).send({
-       message: 'El usuario no existe en la Base de Datos'
-     });
-   }
+    // Verificar si el usuario existe en la base de datos
+    const userResult = await connection.execute(
+      `SELECT CORREO FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1`,
+      [username.toUpperCase()]
+    );
 
-   // Si existe el usuario, verificamos que coincida el correo y la descripción
-   const checkUser = await connection.execute(
-     `SELECT 1 FROM SYSTABREP.SY_USERS_BT 
-      WHERE USERNAME = :1 
-      AND CORREO = :2 
-      AND NOMDESC = :3`,
-     [username.toUpperCase(), email, selectedDesc]
-   );
+    if (userResult.rows.length === 0) {
+      return res.status(400).send({
+        message: "El usuario no existe en la Base de Datos",
+      });
+    }
 
-   if (checkUser.rows.length === 0) {
-     return res.status(400).send({
-       message: 'El correo o la descripción no coinciden con el usuario'
-     });
-   }
+    const userCorreo = userResult.rows[0][0]; // Obtener el correo registrado
 
-   // Si todo está correcto, procedemos con el desbloqueo
-   const result = await connection.execute(
-     `DECLARE
-        l_line VARCHAR2(32767);
-        l_status INTEGER;
-      BEGIN
-        DBMS_OUTPUT.ENABLE(32767);
-        SP_BD_DESBLOQUEO_CUENTA(:username);
-        DBMS_OUTPUT.GET_LINE(l_line, l_status);
-        :out := l_line;
-      END;`,
-     {
-       username: username.toUpperCase(),
-       out: { dir: oracledb.BIND_OUT, type: oracledb.STRING, maxSize: 32767 }
-     }
-   );
-   
-   const message = result.outBinds.out || 'Usuario desbloqueado exitosamente';
-   res.status(200).send({ message });
+    // Si el usuario tiene correo registrado, verificar que el correo sea proporcionado
+    if (userCorreo && !email) {
+      return res.status(400).send({
+        message: "El correo es obligatorio para este usuario",
+      });
+    }
 
- } catch (err) {
-   console.error('Error:', err);
-   if (err.errorNum) {
-     switch (err.errorNum) {
-       case 20001:
-         return res.status(400).send({
-           message: 'El usuario debe renovar sus permisos con SINF, ha superado su fecha de vigencia.'
-         });
-       case 20002:
-         return res.status(400).send({
-           message: 'El usuario no está registrado en la Base de Datos de Bantotal'
-         });
-       default:
-         return res.status(500).send({
-           message: err.message.split('\n')[0]
-         });
-     }
-   }
-   res.status(500).send({ message: "Error desbloqueando usuario" });
- } finally {
-   if (connection) {
-     try {
-       await connection.close();
-     } catch (err) {
-       console.error('Error cerrando la conexión:', err);
-     }
-   }
- }
+    // Verificar que el correo y la descripción coincidan con el usuario
+    const checkUser = await connection.execute(
+      `SELECT 1 FROM SYSTABREP.SY_USERS_BT 
+       WHERE USERNAME = :1 
+       AND (CORREO = :2 OR CORREO IS NULL) 
+       AND NOMDESC = :3`,
+      [username.toUpperCase(), email, selectedDesc]
+    );
+
+    if (checkUser.rows.length === 0) {
+      return res.status(400).send({
+        message: "El correo o la descripción no coinciden con el usuario",
+      });
+    }
+
+    // Proceder con el desbloqueo
+    const result = await connection.execute(
+      `DECLARE
+         l_line VARCHAR2(32767);
+         l_status INTEGER;
+       BEGIN
+         DBMS_OUTPUT.ENABLE(32767);
+         SP_BD_DESBLOQUEO_CUENTA(:username);
+         DBMS_OUTPUT.GET_LINE(l_line, l_status);
+         :out := l_line;
+       END;`,
+      {
+        username: username.toUpperCase(),
+        out: { dir: oracledb.BIND_OUT, type: oracledb.STRING, maxSize: 32767 },
+      }
+    );
+
+    const message = result.outBinds.out || "Usuario desbloqueado exitosamente";
+    res.status(200).send({ message });
+  } catch (err) {
+    console.error("Error:", err);
+    if (err.errorNum) {
+      switch (err.errorNum) {
+        case 20001:
+          return res.status(400).send({
+            message:
+              "El usuario debe renovar sus permisos con SINF, ha superado su fecha de vigencia.",
+          });
+        case 20002:
+          return res.status(400).send({
+            message: "El usuario no está registrado en la Base de Datos de Bantotal",
+          });
+        default:
+          return res.status(500).send({
+            message: err.message.split("\n")[0],
+          });
+      }
+    }
+    res.status(500).send({ message: "Error desbloqueando usuario" });
+  } finally {
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (err) {
+        console.error("Error cerrando la conexión:", err);
+      }
+    }
+  }
 });
 
 module.exports = router;
