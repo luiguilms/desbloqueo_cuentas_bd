@@ -78,6 +78,16 @@ button {
 button:hover {
   background: #1557b0;
 }
+.secondary-button {
+  background: #fff;
+  color: #1a73e8;
+  border: 1px solid #1a73e8;
+  margin-top: 10px;
+}
+
+.secondary-button:hover {
+  background: #f3f4f6;
+}
 
 .message {
   margin-top: 16px;

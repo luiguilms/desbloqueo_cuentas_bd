@@ -121,6 +121,9 @@ function UnlockForm() {
             </select>
           </div>
           <button type="submit">Desbloquear Usuario</button>
+          <button type="button" className="secondary-button" onClick={() => {}}>
+            Generar contraseña Temporal
+          </button>
         </form>
         
         {message && <div className="message success">{message}</div>}
