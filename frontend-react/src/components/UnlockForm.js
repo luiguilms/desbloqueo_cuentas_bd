@@ -8,6 +8,7 @@ function UnlockForm() {
   const [selectedDesc, setSelectedDesc] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [inputError, setInputError] = useState('');
 
   useEffect(() => {
     if (username) {
@@ -17,17 +18,26 @@ function UnlockForm() {
 
   const loadDescOptions = async (username) => {
     try {
+      setInputError(''); // Limpiar error anterior
       const response = await fetch(`http://localhost:3000/api/users/user-options/${username}`);
       const data = await response.json();
       
-      if (response.ok && Array.isArray(data.options)) {
+      if (!response.ok) {
+        setInputError(data.message);
+        setDescOptions([]);
+        return;
+      }
+
+      if (Array.isArray(data.options)) {
         setDescOptions(data.options);
+        setInputError('');
       } else {
         setDescOptions([]);
       }
     } catch (err) {
       console.error('Error cargando opciones:', err);
       setDescOptions([]);
+      setInputError('Error de conexión al servidor');
     }
   };
 
@@ -35,6 +45,7 @@ function UnlockForm() {
     const value = e.target.value;
     setUsername(value);
     setSelectedDesc('');
+    setInputError(''); // Limpiar error al cambiar el usuario
   };
 
   const handleSubmit = async (e) => {
@@ -68,6 +79,7 @@ function UnlockForm() {
         setEmail('');
         setSelectedDesc('');
         setDescOptions([]);
+        setInputError('');
       } else {
         setError(data.message);
         setMessage('');
@@ -95,6 +107,7 @@ function UnlockForm() {
               placeholder="Ingrese nombre de usuario"
               required
             />
+            {inputError && <div className="message error input-error">{inputError}</div>}
           </div>
           <div className="form-group">
             <label>Correo:</label>
@@ -111,6 +124,7 @@ function UnlockForm() {
               value={selectedDesc}
               onChange={(e) => setSelectedDesc(e.target.value)}
               required
+              disabled={inputError !== ''} // Deshabilitar select si hay error
             >
               <option value="">Seleccione su descripción...</option>
               {descOptions.map((desc, index) => (
@@ -120,8 +134,13 @@ function UnlockForm() {
               ))}
             </select>
           </div>
-          <button type="submit">Desbloquear Usuario</button>
-          <button type="button" className="secondary-button" onClick={() => {}}>
+          <button type="submit" disabled={inputError !== ''}>Desbloquear Usuario</button>
+          <button 
+            type="button" 
+            className="secondary-button" 
+            onClick={() => {}}
+            disabled={inputError !== ''}
+          >
             Generar contraseña Temporal
           </button>
         </form>

@@ -47,8 +47,8 @@ input, select {
   border-radius: 6px;
   font-size: 16px;
   color: #1f2937;
-  box-sizing: border-box; /* Asegura que padding y border se incluyan en el ancho total */
-  margin: 0; /* Esto elimina posibles márgenes que pueden causar diferencias en tamaño */
+  box-sizing: border-box;
+  margin: 0;
 }
 
 input:focus, select:focus {
@@ -60,6 +60,14 @@ input:focus, select:focus {
 select {
   background-color: white;
   cursor: pointer;
+}
+
+/* Nuevo estilo para select deshabilitado */
+select:disabled {
+  background-color: #f3f4f6;
+  cursor: not-allowed;
+  border-color: #d1d5db;
+  color: #6b7280;
 }
 
 button {
@@ -78,6 +86,14 @@ button {
 button:hover {
   background: #1557b0;
 }
+
+/* Nuevo estilo para botón deshabilitado */
+button:disabled {
+  background-color: #9eb5d6;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 .secondary-button {
   background: #fff;
   color: #1a73e8;
@@ -87,6 +103,13 @@ button:hover {
 
 .secondary-button:hover {
   background: #f3f4f6;
+}
+
+/* Nuevo estilo para botón secundario deshabilitado */
+.secondary-button:disabled {
+  background-color: #fff;
+  border-color: #d1d5db;
+  color: #9ca3af;
 }
 
 .message {
@@ -105,6 +128,14 @@ button:hover {
   background: #fef2f2;
   border: 1px solid #f87171;
   color: #b91c1c;
+}
+
+/* Nuevo estilo para error de input específico */
+.input-error {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  padding: 0.5rem;
+  margin-bottom: 1rem;
 }
 
 /* Estilo para placeholder del select */

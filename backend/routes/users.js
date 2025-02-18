@@ -13,20 +13,28 @@ router.get('/users/user-options/:username', async (req, res) => {
     
     console.log("Buscando opciones para usuario:", username.toUpperCase());
 
-    // Obtener el NOMDESC correcto del usuario
-    const userDesc = await connection.execute(
-      `SELECT NOMDESC FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1`,
+    // Primero verificar si el usuario existe y su tipo
+    const userCheck = await connection.execute(
+      `SELECT TIPOUSER, NOMDESC FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1`,
       [username.toUpperCase()]
     );
 
     // Debug log
-    console.log("Resultado userDesc:", userDesc.rows);
+    console.log("Resultado userCheck:", userCheck.rows);
 
-    if (userDesc.rows.length === 0) {
+    if (userCheck.rows.length === 0) {
       return res.status(404).send({ message: 'Usuario no encontrado' });
     }
+    // Si existe pero no es tipo F
+    if (userCheck.rows[0][0] !== 'F') {
+      return res.status(400).send({ 
+        message: 'Este sistema solo está disponible para usuarios físicos' 
+      });
+    }
+    // Si llegamos aquí, el usuario existe y es tipo F
+    const userDescValue = userCheck.rows[0][1];
 
-    // Obtener 4 NOMDESC aleatorios diferentes
+    // Obtener 4 NOMDESC aleatorios diferentes de usuarios tipo F
     const otherOptions = await connection.execute(
       `SELECT NOMDESC 
        FROM (
@@ -34,6 +42,7 @@ router.get('/users/user-options/:username', async (req, res) => {
          FROM SYSTABREP.SY_USERS_BT 
          WHERE USERNAME != :1 
            AND NOMDESC IS NOT NULL
+           AND TIPOUSER = 'F'
          ORDER BY DBMS_RANDOM.VALUE
        ) 
        WHERE ROWNUM <= 4`,
@@ -43,16 +52,12 @@ router.get('/users/user-options/:username', async (req, res) => {
     // Debug log
     console.log("Resultado otherOptions:", otherOptions.rows);
 
-    // Extraer correctamente los valores de las filas
-    const userDescValue = userDesc.rows[0][0];  // Cambiado de .NOMDESC a [0]
-    const otherValues = otherOptions.rows.map(row => row[0]);  // Cambiado de .NOMDESC a [0]
-
+    const otherValues = otherOptions.rows.map(row => row[0]);
     let options = [...otherValues, userDescValue].filter(desc => desc != null);
 
     // Debug log
     console.log("Opciones finales:", options);
 
-    // Verificar que tengamos opciones válidas
     if (options.length === 0) {
       return res.status(500).send({ message: 'No se encontraron opciones válidas' });
     }
@@ -89,15 +94,15 @@ router.post('/users/unlock', async (req, res) => {
   try {
     connection = await getConnection();
 
-    // Verificar si el usuario existe en la base de datos
+    // Verificar si el usuario existe en la base de datos y es tipo F
     const userResult = await connection.execute(
-      `SELECT CORREO FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1`,
+      `SELECT CORREO FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1 AND TIPOUSER = 'F'`,
       [username.toUpperCase()]
     );
 
     if (userResult.rows.length === 0) {
       return res.status(400).send({
-        message: "El usuario no existe en la Base de Datos",
+        message: "El usuario no existe en la Base de Datos o no es un usuario físico",
       });
     }
 
@@ -110,12 +115,13 @@ router.post('/users/unlock', async (req, res) => {
       });
     }
 
-    // Verificar que el correo y la descripción coincidan con el usuario
+    // Verificar que el correo y la descripción coincidan con el usuario tipo F
     const checkUser = await connection.execute(
       `SELECT 1 FROM SYSTABREP.SY_USERS_BT 
        WHERE USERNAME = :1 
        AND (CORREO = :2 OR CORREO IS NULL) 
-       AND NOMDESC = :3`,
+       AND NOMDESC = :3
+       AND TIPOUSER = 'F'`,
       [username.toUpperCase(), email, selectedDesc]
     );
 
