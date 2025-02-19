@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import '../styles/UnlockForm.css';
 
-function CodeVerificationModal({ isOpen, onClose, onVerify }) {
+function CodeVerificationModal({ isOpen, onClose, onVerify, isPasswordMode }) {
   const [code, setCode] = useState('');
 
   const handleSubmit = (e) => {
@@ -15,7 +15,7 @@ function CodeVerificationModal({ isOpen, onClose, onVerify }) {
     <div className="modal-overlay">
       <div className="modal-content">
         <h3>Verificación de Código</h3>
-        <p>Ingrese el código enviado a su correo</p>
+        <p>Ingrese el código enviado a su correo para {isPasswordMode ? 'generar una contraseña temporal' : 'desbloquear su cuenta'}</p>
         <form onSubmit={handleSubmit}>
           <input
             type="text"
@@ -47,6 +47,7 @@ function UnlockForm() {
   const [tempUsername, setTempUsername] = useState('');
   const [tempEmail, setTempEmail] = useState('');
   const [tempDesc, setTempDesc] = useState('');
+  const [isPasswordMode, setIsPasswordMode] = useState(false);
 
   useEffect(() => {
     if (username) {
@@ -86,21 +87,23 @@ function UnlockForm() {
     setInputError('');
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
+  const handleGenerateCode = async (isPassword = false) => {
     if (!username || !selectedDesc) {
       setError('Usuario y descripción son requeridos');
       return;
     }
 
     try {
-      // Guardar datos temporalmente
       setTempUsername(username);
       setTempEmail(email);
       setTempDesc(selectedDesc);
+      setIsPasswordMode(isPassword);
 
-      const response = await fetch('http://localhost:3000/api/users/generate-code', {
+      const endpoint = isPassword ? 
+        'http://localhost:3000/api/users/generate-code-password' : 
+        'http://localhost:3000/api/users/generate-code';
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -127,9 +130,22 @@ function UnlockForm() {
     }
   };
 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    handleGenerateCode(false);
+  };
+
+  const handlePasswordGeneration = () => {
+    handleGenerateCode(true);
+  };
+
   const handleVerifyCode = async (code) => {
     try {
-      const response = await fetch('http://localhost:3000/api/users/unlock', {
+      const endpoint = isPasswordMode ? 
+        'http://localhost:3000/api/users/change-password' : 
+        'http://localhost:3000/api/users/unlock';
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -155,6 +171,7 @@ function UnlockForm() {
         setTempUsername('');
         setTempEmail('');
         setTempDesc('');
+        setIsPasswordMode(false);
       } else {
         setError(data.message);
       }
@@ -207,11 +224,13 @@ function UnlockForm() {
               ))}
             </select>
           </div>
-          <button type="submit" disabled={inputError !== ''}>Desbloquear Usuario</button>
+          <button type="submit" disabled={inputError !== ''}>
+            Desbloquear Usuario
+          </button>
           <button 
             type="button" 
             className="secondary-button" 
-            onClick={() => {}}
+            onClick={handlePasswordGeneration}
             disabled={inputError !== ''}
           >
             Generar contraseña Temporal
@@ -226,6 +245,7 @@ function UnlockForm() {
         isOpen={showModal}
         onClose={() => setShowModal(false)}
         onVerify={handleVerifyCode}
+        isPasswordMode={isPasswordMode}
       />
     </div>
   );
