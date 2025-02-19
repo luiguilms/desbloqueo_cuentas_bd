@@ -1,6 +1,40 @@
 import React, { useState, useEffect } from 'react';
 import '../styles/UnlockForm.css';
 
+function CodeVerificationModal({ isOpen, onClose, onVerify }) {
+  const [code, setCode] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onVerify(code);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content">
+        <h3>Verificación de Código</h3>
+        <p>Ingrese el código enviado a su correo</p>
+        <form onSubmit={handleSubmit}>
+          <input
+            type="text"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="Ingrese el código"
+            maxLength="6"
+            required
+          />
+          <div className="modal-buttons">
+            <button type="submit">Verificar</button>
+            <button type="button" onClick={onClose}>Cancelar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function UnlockForm() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -9,6 +43,10 @@ function UnlockForm() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [inputError, setInputError] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  const [tempUsername, setTempUsername] = useState('');
+  const [tempEmail, setTempEmail] = useState('');
+  const [tempDesc, setTempDesc] = useState('');
 
   useEffect(() => {
     if (username) {
@@ -18,7 +56,7 @@ function UnlockForm() {
 
   const loadDescOptions = async (username) => {
     try {
-      setInputError(''); // Limpiar error anterior
+      setInputError('');
       const response = await fetch(`http://localhost:3000/api/users/user-options/${username}`);
       const data = await response.json();
       
@@ -45,7 +83,7 @@ function UnlockForm() {
     const value = e.target.value;
     setUsername(value);
     setSelectedDesc('');
-    setInputError(''); // Limpiar error al cambiar el usuario
+    setInputError('');
   };
 
   const handleSubmit = async (e) => {
@@ -57,7 +95,12 @@ function UnlockForm() {
     }
 
     try {
-      const response = await fetch('http://localhost:3000/api/users/unlock', {
+      // Guardar datos temporalmente
+      setTempUsername(username);
+      setTempEmail(email);
+      setTempDesc(selectedDesc);
+
+      const response = await fetch('http://localhost:3000/api/users/generate-code', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -72,14 +115,8 @@ function UnlockForm() {
       const data = await response.json();
       
       if (response.ok) {
-        setMessage(data.message);
+        setShowModal(true);
         setError('');
-        // Limpiar formulario
-        setUsername('');
-        setEmail('');
-        setSelectedDesc('');
-        setDescOptions([]);
-        setInputError('');
       } else {
         setError(data.message);
         setMessage('');
@@ -87,6 +124,42 @@ function UnlockForm() {
     } catch (err) {
       setError('Error de conexión al servidor');
       setMessage('');
+    }
+  };
+
+  const handleVerifyCode = async (code) => {
+    try {
+      const response = await fetch('http://localhost:3000/api/users/unlock', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: tempUsername,
+          email: tempEmail,
+          selectedDesc: tempDesc,
+          code
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        setMessage(data.message);
+        setShowModal(false);
+        // Limpiar formulario
+        setUsername('');
+        setEmail('');
+        setSelectedDesc('');
+        setDescOptions([]);
+        setTempUsername('');
+        setTempEmail('');
+        setTempDesc('');
+      } else {
+        setError(data.message);
+      }
+    } catch (err) {
+      setError('Error de conexión al servidor');
     }
   };
 
@@ -124,7 +197,7 @@ function UnlockForm() {
               value={selectedDesc}
               onChange={(e) => setSelectedDesc(e.target.value)}
               required
-              disabled={inputError !== ''} // Deshabilitar select si hay error
+              disabled={inputError !== ''}
             >
               <option value="">Seleccione su descripción...</option>
               {descOptions.map((desc, index) => (
@@ -148,6 +221,12 @@ function UnlockForm() {
         {message && <div className="message success">{message}</div>}
         {error && <div className="message error">{error}</div>}
       </div>
+
+      <CodeVerificationModal 
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        onVerify={handleVerifyCode}
+      />
     </div>
   );
 }
