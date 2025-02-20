@@ -1,4 +1,5 @@
 const oracledb = require('oracledb');
+console.log('Contenido actual del .env:');
 require('dotenv').config(); // Asegúrate de que dotenv está cargado para leer el .env
 console.log('DB_HOST:', process.env.DB_HOST);
 console.log('DB_USER:', process.env.DB_USER);

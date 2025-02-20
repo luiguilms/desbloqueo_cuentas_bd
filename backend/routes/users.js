@@ -102,7 +102,7 @@ router.get('/users/user-options/:username', async (req, res) => {
     console.log("Buscando opciones para usuario:", username.toUpperCase());
 
     const userCheck = await connection.execute(
-      `SELECT TIPOUSER, NOMDESC FROM SY_USERS_BT WHERE USERNAME = :1`,
+      `SELECT TIPOUSER, NOMDESC FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1`,
       [username.toUpperCase()]
     );
 
@@ -124,7 +124,7 @@ router.get('/users/user-options/:username', async (req, res) => {
       `SELECT NOMDESC 
        FROM (
          SELECT DISTINCT NOMDESC 
-         FROM SY_USERS_BT 
+         FROM SYSTABREP.SY_USERS_BT 
          WHERE USERNAME != :1 
            AND NOMDESC IS NOT NULL
            AND TIPOUSER = 'F'
@@ -177,7 +177,7 @@ router.post('/users/unlock', async (req, res) => {
     connection = await getConnection();
 
     const userResult = await connection.execute(
-      `SELECT CORREO FROM SY_USERS_BT WHERE USERNAME = :1 AND TIPOUSER = 'F'`,
+      `SELECT CORREO FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1 AND TIPOUSER = 'F'`,
       [username.toUpperCase()]
     );
 
@@ -196,7 +196,7 @@ router.post('/users/unlock', async (req, res) => {
     }
 
     const checkUser = await connection.execute(
-      `SELECT 1 FROM SY_USERS_BT 
+      `SELECT 1 FROM SYSTABREP.SY_USERS_BT 
        WHERE USERNAME = :1 
        AND (CORREO = :2 OR CORREO IS NULL) 
        AND NOMDESC = :3
@@ -294,7 +294,7 @@ router.post('/users/change-password', async (req, res) => {
     connection = await getConnection();
 
     const userResult = await connection.execute(
-      `SELECT CORREO FROM SY_USERS_BT WHERE USERNAME = :1 AND TIPOUSER = 'F'`,
+      `SELECT CORREO FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1 AND TIPOUSER = 'F'`,
       [username.toUpperCase()]
     );
 
@@ -313,7 +313,7 @@ router.post('/users/change-password', async (req, res) => {
     }
 
     const checkUser = await connection.execute(
-      `SELECT 1 FROM SY_USERS_BT 
+      `SELECT 1 FROM SYSTABREP.SY_USERS_BT 
        WHERE USERNAME = :1 
        AND (CORREO = :2 OR CORREO IS NULL) 
        AND NOMDESC = :3
