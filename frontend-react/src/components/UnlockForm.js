@@ -3,6 +3,11 @@ import '../styles/UnlockForm.css';
 
 function CodeVerificationModal({ isOpen, onClose, onVerify, isPasswordMode }) {
   const [code, setCode] = useState('');
+  useEffect(() => {
+    if (!isOpen) {
+      setCode('');
+    }
+  }, [isOpen]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -159,10 +164,10 @@ function UnlockForm() {
       });
 
       const data = await response.json();
-      
+      setShowModal(false);
       if (response.ok) {
         setMessage(data.message);
-        setShowModal(false);
+        setError('');
         // Limpiar formulario
         setUsername('');
         setEmail('');
@@ -176,7 +181,10 @@ function UnlockForm() {
         setError(data.message);
       }
     } catch (err) {
-      setError('Error de conexión al servidor');
+      // Cerrar el modal también en caso de error de conexión
+    setShowModal(false);
+    setError('Error de conexión al servidor');
+    setMessage('');
     }
   };
 

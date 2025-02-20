@@ -15,12 +15,54 @@ const transporter = nodemailer.createTransport({
 
 // Ruta para generar y enviar código (desbloqueo)
 router.post('/users/generate-code', async (req, res) => {
-  const { username, email } = req.body;
+  const { username, email, selectedDesc } = req.body;
   let connection;
+
+  if (!username || !selectedDesc) {
+    return res.status(400).send({
+      message: "El nombre de usuario y la descripción son requeridos",
+    });
+  }
 
   try {
     connection = await getConnection();
-    
+
+    // Verificar si el usuario existe y es tipo 'F'
+    const userResult = await connection.execute(
+      `SELECT CORREO FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1 AND TIPOUSER = 'F'`,
+      [username.toUpperCase()]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(400).send({
+        message: "El usuario no existe en la Base de Datos o no es un usuario físico",
+      });
+    }
+
+    const userCorreo = userResult.rows[0][0];
+
+    if (userCorreo && !email) {
+      return res.status(400).send({
+        message: "El correo es obligatorio para este usuario",
+      });
+    }
+
+    // Verificar si el correo y la descripción coinciden
+    const checkUser = await connection.execute(
+      `SELECT 1 FROM SYSTABREP.SY_USERS_BT 
+       WHERE USERNAME = :1 
+       AND (CORREO = :2 OR CORREO IS NULL) 
+       AND NOMDESC = :3
+       AND TIPOUSER = 'F'`,
+      [username.toUpperCase(), email, selectedDesc]
+    );
+
+    if (checkUser.rows.length === 0) {
+      return res.status(400).send({
+        message: "El correo o la descripción no coinciden con el usuario",
+      });
+    }
+
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     
     await connection.execute(
@@ -52,14 +94,56 @@ router.post('/users/generate-code', async (req, res) => {
   }
 });
 
-// Nueva ruta para generar y enviar código (cambio de contraseña)
+// Ruta para generar y enviar código (cambio de contraseña)
 router.post('/users/generate-code-password', async (req, res) => {
-  const { username, email } = req.body;
+  const { username, email, selectedDesc } = req.body;
   let connection;
+
+  if (!username || !selectedDesc) {
+    return res.status(400).send({
+      message: "El nombre de usuario y la descripción son requeridos",
+    });
+  }
 
   try {
     connection = await getConnection();
-    
+
+    // Verificar si el usuario existe y es tipo 'F'
+    const userResult = await connection.execute(
+      `SELECT CORREO FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1 AND TIPOUSER = 'F'`,
+      [username.toUpperCase()]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(400).send({
+        message: "El usuario no existe en la Base de Datos o no es un usuario físico",
+      });
+    }
+
+    const userCorreo = userResult.rows[0][0];
+
+    if (userCorreo && !email) {
+      return res.status(400).send({
+        message: "El correo es obligatorio para este usuario",
+      });
+    }
+
+    // Verificar si el correo y la descripción coinciden
+    const checkUser = await connection.execute(
+      `SELECT 1 FROM SYSTABREP.SY_USERS_BT 
+       WHERE USERNAME = :1 
+       AND (CORREO = :2 OR CORREO IS NULL) 
+       AND NOMDESC = :3
+       AND TIPOUSER = 'F'`,
+      [username.toUpperCase(), email, selectedDesc]
+    );
+
+    if (checkUser.rows.length === 0) {
+      return res.status(400).send({
+        message: "El correo o la descripción no coinciden con el usuario",
+      });
+    }
+
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     
     await connection.execute(
@@ -162,54 +246,15 @@ router.get('/users/user-options/:username', async (req, res) => {
   }
 });
 
-// Ruta para desbloquear usuario
+// Ruta para desbloquear usuario (simplificada)
 router.post('/users/unlock', async (req, res) => {
-  const { username, email, selectedDesc, code } = req.body;
-
-  if (!username || !selectedDesc) {
-    return res.status(400).send({
-      message: "El nombre de usuario y la descripción son requeridos",
-    });
-  }
-
+  const { username, email, code } = req.body;
   let connection;
+
   try {
     connection = await getConnection();
 
-    const userResult = await connection.execute(
-      `SELECT CORREO FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1 AND TIPOUSER = 'F'`,
-      [username.toUpperCase()]
-    );
-
-    if (userResult.rows.length === 0) {
-      return res.status(400).send({
-        message: "El usuario no existe en la Base de Datos o no es un usuario físico",
-      });
-    }
-
-    const userCorreo = userResult.rows[0][0];
-
-    if (userCorreo && !email) {
-      return res.status(400).send({
-        message: "El correo es obligatorio para este usuario",
-      });
-    }
-
-    const checkUser = await connection.execute(
-      `SELECT 1 FROM SYSTABREP.SY_USERS_BT 
-       WHERE USERNAME = :1 
-       AND (CORREO = :2 OR CORREO IS NULL) 
-       AND NOMDESC = :3
-       AND TIPOUSER = 'F'`,
-      [username.toUpperCase(), email, selectedDesc]
-    );
-
-    if (checkUser.rows.length === 0) {
-      return res.status(400).send({
-        message: "El correo o la descripción no coinciden con el usuario",
-      });
-    }
-
+    // Verificar solo el código
     const codeCheck = await connection.execute(
       `SELECT 1 FROM TEMP_UNLOCK_CODES 
        WHERE USERNAME = :1 
@@ -273,60 +318,21 @@ router.post('/users/unlock', async (req, res) => {
       try {
         await connection.close();
       } catch (err) {
-        console.error("Error cerrando la conexión:", err);
+        console.error('Error cerrando la conexión:', err);
       }
     }
   }
 });
 
-// Nueva ruta para cambio de contraseña temporal
+// Ruta para cambio de contraseña temporal (simplificada)
 router.post('/users/change-password', async (req, res) => {
-  const { username, email, selectedDesc, code } = req.body;
-
-  if (!username || !selectedDesc) {
-    return res.status(400).send({
-      message: "El nombre de usuario y la descripción son requeridos",
-    });
-  }
-
+  const { username, email, code } = req.body;
   let connection;
+
   try {
     connection = await getConnection();
 
-    const userResult = await connection.execute(
-      `SELECT CORREO FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1 AND TIPOUSER = 'F'`,
-      [username.toUpperCase()]
-    );
-
-    if (userResult.rows.length === 0) {
-      return res.status(400).send({
-        message: "El usuario no existe en la Base de Datos o no es un usuario físico",
-      });
-    }
-
-    const userCorreo = userResult.rows[0][0];
-
-    if (userCorreo && !email) {
-      return res.status(400).send({
-        message: "El correo es obligatorio para este usuario",
-      });
-    }
-
-    const checkUser = await connection.execute(
-      `SELECT 1 FROM SYSTABREP.SY_USERS_BT 
-       WHERE USERNAME = :1 
-       AND (CORREO = :2 OR CORREO IS NULL) 
-       AND NOMDESC = :3
-       AND TIPOUSER = 'F'`,
-      [username.toUpperCase(), email, selectedDesc]
-    );
-
-    if (checkUser.rows.length === 0) {
-      return res.status(400).send({
-        message: "El correo o la descripción no coinciden con el usuario",
-      });
-    }
-
+    // Verificar solo el código
     const codeCheck = await connection.execute(
       `SELECT 1 FROM TEMP_UNLOCK_CODES 
        WHERE USERNAME = :1 
@@ -364,33 +370,49 @@ router.post('/users/change-password', async (req, res) => {
     );
     await connection.commit();
 
-    const message = result.outBinds.out || "Contraseña temporal generada exitosamente";
-    res.status(200).send({ message });
+    const outputMessage = result.outBinds.out;
+    if (outputMessage && outputMessage.includes("temporal")) {
+      const tempPassword = outputMessage.split(": ")[1];
+      res.status(200).send({ 
+        message: "Contraseña temporal generada exitosamente",
+        temporaryPassword: tempPassword
+      });
+    } else {
+      res.status(200).send({ 
+        message: outputMessage || "Contraseña temporal generada exitosamente"
+      });
+    }
   } catch (err) {
-    console.error("Error:", err);
-    if (err.errorNum) {
-      switch (err.errorNum) {
-        case 29998:
-          return res.status(400).send({
-            message: "El usuario debe renovar sus permisos, ha superado su fecha de vigencia.",
-          });
-        case 29999:
-          return res.status(400).send({
-            message: "El usuario no está registrado en la Base de Datos de Bantotal",
-          });
-        default:
-          return res.status(500).send({
-            message: err.message.split("\n")[0],
-          });
+    console.error("Error completo:", err);
+    
+    if (err.message && err.message.includes("ORA-21000")) {
+      if (err.message.includes("-29998")) {
+        return res.status(400).send({
+          message: "El usuario debe renovar sus permisos con SINF, ha superado su fecha de vigencia."
+        });
+      }
+      if (err.message.includes("-29999")) {
+        return res.status(400).send({
+          message: "El usuario no está registrado en la Base de Datos de Bantotal"
+        });
       }
     }
-    res.status(500).send({ message: "Error generando contraseña temporal" });
+
+    if (err.errorNum) {
+      return res.status(500).send({
+        message: err.message.split("\n")[0]
+      });
+    }
+
+    res.status(500).send({ 
+      message: "Error generando contraseña temporal" 
+    });
   } finally {
     if (connection) {
       try {
         await connection.close();
       } catch (err) {
-        console.error("Error cerrando la conexión:", err);
+        console.error('Error cerrando la conexión:', err);
       }
     }
   }
