@@ -34,5 +34,7 @@ module.exports = {
     },
     port: 3001,
     hot: true,
+    allowedHosts: ['INFO7499', 'localhost', '10.0.202.63'],
+    host: '0.0.0.0'
   },
 };
