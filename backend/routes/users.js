@@ -75,7 +75,7 @@ router.post('/users/generate-code', async (req, res) => {
       from: 'igs_llupacca@cajaarequipa.pe',
       to: email,
       subject: 'Código de Desbloqueo',
-      text: `Su código de desbloqueo es: ${code}`
+      text: `Su código de desbloqueo es: ${code}\n\nEste codigo expirará en 5 minutos.\n`
     });
 
     await connection.commit();
@@ -156,7 +156,7 @@ router.post('/users/generate-code-password', async (req, res) => {
       from: 'igs_llupacca@cajaarequipa.pe',
       to: email,
       subject: 'Código para Cambio de Contraseña',
-      text: `Su código para generar una contraseña temporal es: ${code}`
+      text: `Su código para generar una contraseña temporal es: ${code}\n\nEste codigo expirará en 5 minutos.\n`
     });
 
     await connection.commit();
