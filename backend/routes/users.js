@@ -49,7 +49,7 @@ router.post('/users/generate-code', async (req, res) => {
 
     // Verificar si el usuario existe y es tipo 'F'
     const userResult = await connection.execute(
-      `SELECT CORREO FROM SY_USERS_BT WHERE USERNAME = :1 AND TIPOUSER = 'F'`,
+      `SELECT CORREO FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1 AND TIPOUSER = 'F'`,
       [username.toUpperCase()]
     );
 
@@ -69,7 +69,7 @@ router.post('/users/generate-code', async (req, res) => {
 
     // Verificar si el correo y la descripción coinciden
     const checkUser = await connection.execute(
-      `SELECT 1 FROM SY_USERS_BT 
+      `SELECT 1 FROM SYSTABREP.SY_USERS_BT 
        WHERE USERNAME = :1 
        AND (CORREO = :2 OR CORREO IS NULL) 
        AND NOMDESC = :3
@@ -130,7 +130,7 @@ router.post('/users/generate-code-password', async (req, res) => {
 
     // Verificar si el usuario existe y es tipo 'F'
     const userResult = await connection.execute(
-      `SELECT CORREO FROM SY_USERS_BT WHERE USERNAME = :1 AND TIPOUSER = 'F'`,
+      `SELECT CORREO FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1 AND TIPOUSER = 'F'`,
       [username.toUpperCase()]
     );
 
@@ -150,7 +150,7 @@ router.post('/users/generate-code-password', async (req, res) => {
 
     // Verificar si el correo y la descripción coinciden
     const checkUser = await connection.execute(
-      `SELECT 1 FROM SY_USERS_BT 
+      `SELECT 1 FROM SYSTABREP.SY_USERS_BT 
        WHERE USERNAME = :1 
        AND (CORREO = :2 OR CORREO IS NULL) 
        AND NOMDESC = :3
@@ -206,7 +206,7 @@ router.get('/users/user-options/:username', async (req, res) => {
     console.log("Buscando opciones para usuario:", username.toUpperCase());
 
     const userCheck = await connection.execute(
-      `SELECT TIPOUSER, NOMDESC FROM SY_USERS_BT WHERE USERNAME = :1`,
+      `SELECT TIPOUSER, NOMDESC FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1`,
       [username.toUpperCase()]
     );
 
@@ -228,7 +228,7 @@ router.get('/users/user-options/:username', async (req, res) => {
       `SELECT NOMDESC 
        FROM (
          SELECT DISTINCT NOMDESC 
-         FROM SY_USERS_BT 
+         FROM SYSTABREP.SY_USERS_BT 
          WHERE USERNAME != :1 
            AND NOMDESC IS NOT NULL
            AND TIPOUSER = 'F'
