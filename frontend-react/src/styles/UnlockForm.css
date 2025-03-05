@@ -154,6 +154,7 @@ select option[value=""] {
   justify-content: center;
   align-items: center;
   z-index: 1000;
+  animation: fadeIn 0.3s ease;
 }
 
 .modal-content {
@@ -162,14 +163,67 @@ select option[value=""] {
   border-radius: 8px;
   max-width: 400px;
   width: 90%;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  animation: slideIn 0.3s ease;
 }
 
 .modal-buttons {
   display: flex;
   gap: 10px;
   margin-top: 20px;
+  justify-content: flex-end;
+}
+
+.modal-buttons button {
+  min-width: 80px;
 }
 
 .modal-content input {
   margin: 10px 0;
+}
+
+.password-box {
+  background: #e6f7ff;
+  border: 1px solid #1890ff;
+  color: #0050b3;
+  font-size: 16px;
+  font-weight: 400;
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 6px;
+  word-break: break-all;
+}
+
+.password-box strong {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+.blur-background {
+  position: relative;
+}
+
+.blur-background .form-container,
+.blur-background .header {
+  filter: blur(4px);
+  transition: filter 0.3s ease;
+  pointer-events: none; /* Previene interacción con el contenido borroso */
+}
+
+/* Animaciones para el modal */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideIn {
+  from { transform: translateY(-20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.modal-content h3 {
+  margin-top: 0;
+  color: #1a73e8;
 }

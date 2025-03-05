@@ -13,6 +13,26 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+// Función para enviar correo al administrador
+async function sendAdminNotification(username, operationType) {
+  const adminEmail = 'igs_llupacca@cajaarequipa.pe';
+  const operationText = operationType === 'unlock' ? 'desbloqueo de cuenta' : 'cambio de contraseña temporal';
+  
+  try {
+    await transporter.sendMail({
+      from: 'igs_llupacca@cajaarequipa.pe',
+      to: adminEmail,
+      subject: `Notificación: ${operationText.toUpperCase()} - Usuario ${username}`,
+      text: `Se ha realizado una operación de ${operationText} para el usuario ${username} exitosamente.\n\nFecha y hora: ${new Date().toLocaleString()}`
+    });
+    
+    console.log(`Notificación enviada al administrador sobre ${operationText} de ${username}`);
+  } catch (error) {
+    console.error('Error al enviar correo al administrador:', error);
+    // No bloqueamos el flujo principal si falla el envío de la notificación
+  }
+}
+
 // Ruta para generar y enviar código (desbloqueo)
 router.post('/users/generate-code', async (req, res) => {
   const { username, email, selectedDesc } = req.body;
@@ -29,7 +49,7 @@ router.post('/users/generate-code', async (req, res) => {
 
     // Verificar si el usuario existe y es tipo 'F'
     const userResult = await connection.execute(
-      `SELECT CORREO FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1 AND TIPOUSER = 'F'`,
+      `SELECT CORREO FROM SY_USERS_BT WHERE USERNAME = :1 AND TIPOUSER = 'F'`,
       [username.toUpperCase()]
     );
 
@@ -49,7 +69,7 @@ router.post('/users/generate-code', async (req, res) => {
 
     // Verificar si el correo y la descripción coinciden
     const checkUser = await connection.execute(
-      `SELECT 1 FROM SYSTABREP.SY_USERS_BT 
+      `SELECT 1 FROM SY_USERS_BT 
        WHERE USERNAME = :1 
        AND (CORREO = :2 OR CORREO IS NULL) 
        AND NOMDESC = :3
@@ -110,7 +130,7 @@ router.post('/users/generate-code-password', async (req, res) => {
 
     // Verificar si el usuario existe y es tipo 'F'
     const userResult = await connection.execute(
-      `SELECT CORREO FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1 AND TIPOUSER = 'F'`,
+      `SELECT CORREO FROM SY_USERS_BT WHERE USERNAME = :1 AND TIPOUSER = 'F'`,
       [username.toUpperCase()]
     );
 
@@ -130,7 +150,7 @@ router.post('/users/generate-code-password', async (req, res) => {
 
     // Verificar si el correo y la descripción coinciden
     const checkUser = await connection.execute(
-      `SELECT 1 FROM SYSTABREP.SY_USERS_BT 
+      `SELECT 1 FROM SY_USERS_BT 
        WHERE USERNAME = :1 
        AND (CORREO = :2 OR CORREO IS NULL) 
        AND NOMDESC = :3
@@ -186,7 +206,7 @@ router.get('/users/user-options/:username', async (req, res) => {
     console.log("Buscando opciones para usuario:", username.toUpperCase());
 
     const userCheck = await connection.execute(
-      `SELECT TIPOUSER, NOMDESC FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1`,
+      `SELECT TIPOUSER, NOMDESC FROM SY_USERS_BT WHERE USERNAME = :1`,
       [username.toUpperCase()]
     );
 
@@ -208,7 +228,7 @@ router.get('/users/user-options/:username', async (req, res) => {
       `SELECT NOMDESC 
        FROM (
          SELECT DISTINCT NOMDESC 
-         FROM SYSTABREP.SY_USERS_BT 
+         FROM SY_USERS_BT 
          WHERE USERNAME != :1 
            AND NOMDESC IS NOT NULL
            AND TIPOUSER = 'F'
@@ -293,6 +313,10 @@ router.post('/users/unlock', async (req, res) => {
     await connection.commit();
 
     const message = result.outBinds.out || "Usuario desbloqueado exitosamente";
+
+    // Enviar notificación al administrador
+    await sendAdminNotification(username.toUpperCase(), 'unlock');
+    
     res.status(200).send({ message });
   } catch (err) {
     console.error("Error:", err);
@@ -369,6 +393,8 @@ router.post('/users/change-password', async (req, res) => {
       [username.toUpperCase()]
     );
     await connection.commit();
+    // Enviar notificación al administrador (mover aquí, fuera del condicional)
+    await sendAdminNotification(username.toUpperCase(), 'password');
 
     const outputMessage = result.outBinds.out;
     if (outputMessage && outputMessage.includes("temporal")) {

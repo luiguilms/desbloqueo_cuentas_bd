@@ -46,6 +46,7 @@ function UnlockForm() {
   const [descOptions, setDescOptions] = useState([]);
   const [selectedDesc, setSelectedDesc] = useState('');
   const [message, setMessage] = useState('');
+  const [tempPassword, setTempPassword] = useState(''); // Estado para la contraseña temporal
   const [error, setError] = useState('');
   const [inputError, setInputError] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -128,10 +129,12 @@ function UnlockForm() {
       } else {
         setError(data.message);
         setMessage('');
+        setTempPassword(''); // Limpiar contraseña temporal si hay error
       }
     } catch (err) {
       setError('Error de conexión al servidor');
       setMessage('');
+      setTempPassword(''); // Limpiar contraseña temporal si hay error
     }
   };
 
@@ -165,9 +168,17 @@ function UnlockForm() {
 
       const data = await response.json();
       setShowModal(false);
+      
       if (response.ok) {
         setMessage(data.message);
+        // Capturar la contraseña temporal si está disponible
+        if (data.temporaryPassword) {
+          setTempPassword(data.temporaryPassword);
+        } else {
+          setTempPassword('');
+        }
         setError('');
+        
         // Limpiar formulario
         setUsername('');
         setEmail('');
@@ -176,20 +187,22 @@ function UnlockForm() {
         setTempUsername('');
         setTempEmail('');
         setTempDesc('');
-        setIsPasswordMode(false);
+        // No reseteamos isPasswordMode para mantener consistente el UI
       } else {
         setError(data.message);
+        setTempPassword(''); // Limpiar contraseña temporal si hay error
       }
     } catch (err) {
       // Cerrar el modal también en caso de error de conexión
-    setShowModal(false);
-    setError('Error de conexión al servidor');
-    setMessage('');
+      setShowModal(false);
+      setError('Error de conexión al servidor');
+      setMessage('');
+      setTempPassword(''); // Limpiar contraseña temporal si hay error
     }
   };
 
   return (
-    <div className="unlock-form">
+    <div className={`unlock-form ${showModal ? 'blur-background' : ''}`}>
       <div className="header">
         <h1>Sistema de Desbloqueo de Usuarios</h1>
       </div>
@@ -246,6 +259,12 @@ function UnlockForm() {
         </form>
         
         {message && <div className="message success">{message}</div>}
+        {/* Mostrar la contraseña temporal si existe */}
+        {tempPassword && (
+          <div className="message password-box">
+            <strong>Contraseña temporal:</strong> {tempPassword}
+          </div>
+        )}
         {error && <div className="message error">{error}</div>}
       </div>
 
