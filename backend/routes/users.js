@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const oracledb = require('oracledb');
 const { getConnection } = require('../config/dbConfig');
+const { getTempCodesConnection } = require('../config/tempCodesDbConfig');
 const nodemailer = require('nodemailer');
 
 const transporter = nodemailer.createTransport({
@@ -36,7 +37,8 @@ async function sendAdminNotification(username, operationType) {
 // Ruta para generar y enviar código (desbloqueo)
 router.post('/users/generate-code', async (req, res) => {
   const { username, email, selectedDesc } = req.body;
-  let connection;
+  let mainConnection;
+  let tempConnection;
 
   if (!username || !selectedDesc) {
     return res.status(400).send({
@@ -45,10 +47,10 @@ router.post('/users/generate-code', async (req, res) => {
   }
 
   try {
-    connection = await getConnection();
+    mainConnection = await getConnection();
 
     // Verificar si el usuario existe y es tipo 'F'
-    const userResult = await connection.execute(
+    const userResult = await mainConnection.execute(
       `SELECT CORREO FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1 AND TIPOUSER = 'F'`,
       [username.toUpperCase()]
     );
@@ -68,7 +70,7 @@ router.post('/users/generate-code', async (req, res) => {
     }
 
     // Verificar si el correo y la descripción coinciden
-    const checkUser = await connection.execute(
+    const checkUser = await mainConnection.execute(
       `SELECT 1 FROM SYSTABREP.SY_USERS_BT 
        WHERE USERNAME = :1 
        AND (CORREO = :2 OR CORREO IS NULL) 
@@ -84,8 +86,8 @@ router.post('/users/generate-code', async (req, res) => {
     }
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    await connection.execute(
+    tempConnection = await getTempCodesConnection();
+    await tempConnection.execute(
       `INSERT INTO TEMP_UNLOCK_CODES (USERNAME, EMAIL, CODE) 
        VALUES (:1, :2, :3)`,
       [username.toUpperCase(), email, code]
@@ -98,18 +100,20 @@ router.post('/users/generate-code', async (req, res) => {
       text: `Su código de desbloqueo es: ${code}\n\nEste codigo expirará en 5 minutos.\n`
     });
 
-    await connection.commit();
+    await tempConnection.commit();
     res.json({ message: 'Código enviado exitosamente' });
   } catch (err) {
     console.error('Error:', err);
     res.status(500).json({ message: 'Error al generar el código' });
   } finally {
-    if (connection) {
-      try {
-        await connection.close();
-      } catch (err) {
-        console.error('Error cerrando la conexión:', err);
-      }
+    // Cerrar ambas conexiones
+    if (mainConnection) {
+      try { await mainConnection.close(); } 
+      catch (err) { console.error('Error cerrando conexión principal:', err); }
+    }
+    if (tempConnection) {
+      try { await tempConnection.close(); } 
+      catch (err) { console.error('Error cerrando conexión temporal:', err); }
     }
   }
 });
@@ -269,13 +273,14 @@ router.get('/users/user-options/:username', async (req, res) => {
 // Ruta para desbloquear usuario (simplificada)
 router.post('/users/unlock', async (req, res) => {
   const { username, email, code } = req.body;
-  let connection;
-
+  let mainConnection;
+  let tempConnection;
+  let codeVerified = false;
   try {
-    connection = await getConnection();
+    tempConnection = await getTempCodesConnection();
 
     // Verificar solo el código
-    const codeCheck = await connection.execute(
+    const codeCheck = await tempConnection.execute(
       `SELECT 1 FROM TEMP_UNLOCK_CODES 
        WHERE USERNAME = :1 
        AND EMAIL = :2 
@@ -290,7 +295,11 @@ router.post('/users/unlock', async (req, res) => {
       });
     }
 
-    const result = await connection.execute(
+    codeVerified = true;
+
+    mainConnection = await getConnection();
+
+    const result = await mainConnection.execute(
       `DECLARE
          l_line VARCHAR2(32767);
          l_status INTEGER;
@@ -305,12 +314,6 @@ router.post('/users/unlock', async (req, res) => {
         out: { dir: oracledb.BIND_OUT, type: oracledb.STRING, maxSize: 32767 },
       }
     );
-
-    await connection.execute(
-      `DELETE FROM TEMP_UNLOCK_CODES WHERE USERNAME = :1`,
-      [username.toUpperCase()]
-    );
-    await connection.commit();
 
     const message = result.outBinds.out || "Usuario desbloqueado exitosamente";
 
@@ -328,7 +331,7 @@ router.post('/users/unlock', async (req, res) => {
           });
         case 20002:
           return res.status(400).send({
-            message: "El usuario no está registrado en la Base de Datos de Bantotal",
+            message: "El usuario no está registrado en la Base de Datos de Bantotal o no esta habilitado.",
           });
         default:
           return res.status(500).send({
@@ -338,26 +341,47 @@ router.post('/users/unlock', async (req, res) => {
     }
     res.status(500).send({ message: "Error desbloqueando usuario" });
   } finally {
-    if (connection) {
+    // Limpiar código de la tabla si fue verificado, independientemente del resultado
+    if (codeVerified && tempConnection) {
       try {
-        await connection.close();
-      } catch (err) {
-        console.error('Error cerrando la conexión:', err);
+        await tempConnection.execute(
+          `DELETE FROM TEMP_UNLOCK_CODES WHERE USERNAME = :1 AND EMAIL = :2 AND CODE = :3`,
+          [username.toUpperCase(), email, code]
+        );
+        await tempConnection.commit();
+      } catch (deleteErr) {
+        console.error('Error eliminando código temporal:', deleteErr);
       }
     }
-  }
-});
+    if (mainConnection) {
+      try {
+        await mainConnection.close();
+      } catch (err) {
+        console.error('Error cerrando la conexión principal:', err);
+      }
+    }
+    if (tempConnection) {
+      try {
+        await tempConnection.close();
+      } catch (err) {
+        console.error('Error cerrando la conexión temporal:', err);
+      }
+    }}
+  });
 
 // Ruta para cambio de contraseña temporal (simplificada)
 router.post('/users/change-password', async (req, res) => {
   const { username, email, code } = req.body;
-  let connection;
+  let mainConnection;
+  let tempConnection;
+  let codeVerified = false;
 
   try {
-    connection = await getConnection();
-
-    // Verificar solo el código
-    const codeCheck = await connection.execute(
+    // Conectar a la BD de códigos temporales
+    tempConnection = await getTempCodesConnection();
+    
+    // Verificar el código
+    const codeCheck = await tempConnection.execute(
       `SELECT 1 FROM TEMP_UNLOCK_CODES 
        WHERE USERNAME = :1 
        AND EMAIL = :2 
@@ -371,8 +395,15 @@ router.post('/users/change-password', async (req, res) => {
         message: "Código inválido o expirado"
       });
     }
+    
+    // Marcar código como verificado
+    codeVerified = true;
+    
+    // Conectar a la BD principal
+    mainConnection = await getConnection();
 
-    const result = await connection.execute(
+    // Ejecutar procedimiento para cambio de contraseña
+    const result = await mainConnection.execute(
       `DECLARE
          l_line VARCHAR2(32767);
          l_status INTEGER;
@@ -388,12 +419,7 @@ router.post('/users/change-password', async (req, res) => {
       }
     );
 
-    await connection.execute(
-      `DELETE FROM TEMP_UNLOCK_CODES WHERE USERNAME = :1`,
-      [username.toUpperCase()]
-    );
-    await connection.commit();
-    // Enviar notificación al administrador (mover aquí, fuera del condicional)
+    // Enviar notificación al administrador
     await sendAdminNotification(username.toUpperCase(), 'password');
 
     const outputMessage = result.outBinds.out;
@@ -419,7 +445,7 @@ router.post('/users/change-password', async (req, res) => {
       }
       if (err.message.includes("-29999")) {
         return res.status(400).send({
-          message: "El usuario no está registrado en la Base de Datos de Bantotal"
+          message: "El usuario no está registrado en la Base de Datos de Bantotal o no esta habilitado."
         });
       }
     }
@@ -434,11 +460,32 @@ router.post('/users/change-password', async (req, res) => {
       message: "Error generando contraseña temporal" 
     });
   } finally {
-    if (connection) {
+    // Limpiar código de la tabla si fue verificado, independientemente del resultado
+    if (codeVerified && tempConnection) {
       try {
-        await connection.close();
+        await tempConnection.execute(
+          `DELETE FROM TEMP_UNLOCK_CODES WHERE USERNAME = :1 AND EMAIL = :2 AND CODE = :3`,
+          [username.toUpperCase(), email, code]
+        );
+        await tempConnection.commit();
+      } catch (deleteErr) {
+        console.error('Error eliminando código temporal:', deleteErr);
+      }
+    }
+    
+    // Cerrar conexiones
+    if (mainConnection) {
+      try {
+        await mainConnection.close();
       } catch (err) {
-        console.error('Error cerrando la conexión:', err);
+        console.error('Error cerrando la conexión principal:', err);
+      }
+    }
+    if (tempConnection) {
+      try {
+        await tempConnection.close();
+      } catch (err) {
+        console.error('Error cerrando la conexión temporal:', err);
       }
     }
   }
