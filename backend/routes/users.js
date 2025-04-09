@@ -4,6 +4,100 @@ const oracledb = require('oracledb');
 const { getConnection } = require('../config/dbConfig');
 const { getTempCodesConnection } = require('../config/tempCodesDbConfig');
 const nodemailer = require('nodemailer');
+const os = require('os');
+const { execSync } = require('child_process');
+
+// Función para obtener información del cliente
+// Función para obtener información del cliente
+function getClientInfo(req) {
+  let ipAddress = '0.0.0.0';
+  
+  try {
+    // Enfoque alternativo: usar las interfaces de red directamente
+    const networkInterfaces = os.networkInterfaces();
+    
+    // Buscar una dirección IP que no sea de loopback
+    for (const interfaceName in networkInterfaces) {
+      const interfaces = networkInterfaces[interfaceName];
+      for (const iface of interfaces) {
+        if (iface.family === 'IPv4' && !iface.internal) {
+          ipAddress = iface.address;
+          // Una vez encontrada una IP válida, salimos del bucle
+          break;
+        }
+      }
+      if (ipAddress !== '0.0.0.0') break;
+    }
+    
+    // Si aún no tenemos IP, intentar con ipconfig
+    if (ipAddress === '0.0.0.0' && process.platform === 'win32') {
+      // Probar varias posibles salidas de ipconfig (para diferentes idiomas)
+      const output = execSync('ipconfig').toString();
+      
+      // Patrones para diferentes idiomas y versiones
+      const patterns = [
+        /IPv4 Address[.\s]+: ([^\s]+)/,
+        /Dirección IPv4[.\s]+: ([^\s]+)/,  // Español
+        /IPv4-Adresse[.\s]+: ([^\s]+)/,    // Alemán
+        /Adresse IPv4[.\s]+: ([^\s]+)/,    // Francés
+        /IPv4[^:]+: ([^\s]+)/              // Patrón más genérico
+      ];
+      
+      for (const pattern of patterns) {
+        const matches = output.match(pattern);
+        if (matches && matches.length > 1) {
+          ipAddress = matches[1];
+          break;
+        }
+      }
+      
+      // En caso de fallo, imprimir la salida para diagnóstico
+      if (ipAddress === '0.0.0.0') {
+        console.log('Salida de ipconfig:', output);
+      }
+    }
+  } catch (error) {
+    console.error('Error obteniendo IP de la máquina:', error);
+    // Usar la IP de la solicitud como fallback
+    ipAddress = req.ip || req.connection.remoteAddress || req.socket.remoteAddress || '0.0.0.0';
+  }
+  
+  // Para depuración, imprimir información detallada
+  console.log('IP encontrada:', ipAddress);
+  console.log('Usuario Windows:', process.env.USERNAME || process.env.USER || 'unknown');
+  console.log('Nombre de máquina:', os.hostname() || 'unknown');
+  
+  return {
+    ipAddress: ipAddress,
+    windowsUser: process.env.USERNAME || process.env.USER || 'unknown',
+    machineName: os.hostname() || 'unknown'
+  };
+}
+
+// Función para registrar en el historial
+async function logToHistory(connection, username, email, code, clientInfo) {
+  try {
+    await connection.execute(
+      `INSERT INTO UNLOCK_CODES_HISTORY 
+       (USERNAME, EMAIL, CODE, WINDOWS_USER, IP_ADDRESS, MACHINE_NAME) 
+       VALUES (:1, :2, :3, :4, :5, :6)`,
+      [
+        username.toUpperCase(), 
+        email, 
+        code, 
+        clientInfo.windowsUser,
+        clientInfo.ipAddress,
+        clientInfo.machineName
+      ]
+    );
+    
+    await connection.commit();
+    console.log('Registro histórico creado para:', username);
+  } catch (error) {
+    console.error('Error al registrar en historial:', error);
+    // No interrumpimos el flujo principal si falla el registro histórico
+  }
+}
 
 const transporter = nodemailer.createTransport({
   host: '10.0.200.68',
@@ -39,6 +133,7 @@ router.post('/users/generate-code', async (req, res) => {
   const { username, email, selectedDesc } = req.body;
   let mainConnection;
   let tempConnection;
+  const clientInfo = getClientInfo(req);
 
   if (!username || !selectedDesc) {
     return res.status(400).send({
@@ -92,6 +187,14 @@ router.post('/users/generate-code', async (req, res) => {
        VALUES (:1, :2, :3)`,
       [username.toUpperCase(), email, code]
     );
+    // Registrar también en la tabla de historial
+    await logToHistory(
+      tempConnection, 
+      username, 
+      email, 
+      code, 
+      clientInfo
+    );
     
     await transporter.sendMail({
       from: 'igs_llupacca@cajaarequipa.pe',
@@ -121,6 +224,7 @@ router.post('/users/generate-code', async (req, res) => {
 // Ruta para generar y enviar código (cambio de contraseña)
 router.post('/users/generate-code-password', async (req, res) => {
   const { username, email, selectedDesc } = req.body;
+  const clientInfo = getClientInfo(req);
   let connection;
 
   if (!username || !selectedDesc) {
@@ -174,6 +278,15 @@ router.post('/users/generate-code-password', async (req, res) => {
       `INSERT INTO TEMP_UNLOCK_CODES (USERNAME, EMAIL, CODE) 
        VALUES (:1, :2, :3)`,
       [username.toUpperCase(), email, code]
+    );
+
+    // Registrar en historial
+    await logToHistory(
+      connection, 
+      username, 
+      email, 
+      code, 
+      clientInfo
     );
     
     await transporter.sendMail({
