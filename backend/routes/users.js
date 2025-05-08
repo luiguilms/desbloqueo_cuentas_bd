@@ -130,7 +130,7 @@ async function sendAdminNotification(username, operationType) {
 
 // Ruta para generar y enviar código (desbloqueo)
 router.post('/users/generate-code', async (req, res) => {
-  const { username, email, selectedDesc } = req.body;
+  const { username, email, selectedDesc, selectedDatabase } = req.body;
   let mainConnection;
   let tempConnection;
   const clientInfo = getClientInfo(req);
@@ -142,7 +142,12 @@ router.post('/users/generate-code', async (req, res) => {
   }
 
   try {
-    mainConnection = await getConnection();
+    if (selectedDatabase === 'bantotal') {
+      mainConnection = await getConnection();  // Conexión a la base de datos Bantotal
+    } else {
+      // Aquí podrías agregar lógica para otras bases de datos si es necesario
+      return res.status(400).send({ message: "Base de datos no soportada por el momento" });
+    }
 
     // Verificar si el usuario existe y es tipo 'F'
     const userResult = await mainConnection.execute(
@@ -223,9 +228,10 @@ router.post('/users/generate-code', async (req, res) => {
 
 // Ruta para generar y enviar código (cambio de contraseña)
 router.post('/users/generate-code-password', async (req, res) => {
-  const { username, email, selectedDesc } = req.body;
+  const { username, email, selectedDesc, selectedDatabase  } = req.body;
+  let mainConnection;
+  let tempConnection;
   const clientInfo = getClientInfo(req);
-  let connection;
 
   if (!username || !selectedDesc) {
     return res.status(400).send({
@@ -234,10 +240,15 @@ router.post('/users/generate-code-password', async (req, res) => {
   }
 
   try {
-    connection = await getConnection();
+    if (selectedDatabase === 'bantotal') {
+      mainConnection = await getConnection();  // Conexión a la base de datos Bantotal
+    } else {
+      // Aquí podrías agregar lógica para otras bases de datos si es necesario
+      return res.status(400).send({ message: "Base de datos no soportada por el momento" });
+    }
 
     // Verificar si el usuario existe y es tipo 'F'
-    const userResult = await connection.execute(
+    const userResult = await mainConnection.execute(
       `SELECT CORREO FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1 AND TIPOUSER = 'F'`,
       [username.toUpperCase()]
     );
@@ -257,7 +268,7 @@ router.post('/users/generate-code-password', async (req, res) => {
     }
 
     // Verificar si el correo y la descripción coinciden
-    const checkUser = await connection.execute(
+    const checkUser = await mainConnection.execute(
       `SELECT 1 FROM SYSTABREP.SY_USERS_BT 
        WHERE USERNAME = :1 
        AND (CORREO = :2 OR CORREO IS NULL) 
@@ -273,8 +284,8 @@ router.post('/users/generate-code-password', async (req, res) => {
     }
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    await connection.execute(
+    tempConnection = await getTempCodesConnection();
+    await tempConnection.execute(
       `INSERT INTO TEMP_UNLOCK_CODES (USERNAME, EMAIL, CODE) 
        VALUES (:1, :2, :3)`,
       [username.toUpperCase(), email, code]
@@ -282,7 +293,7 @@ router.post('/users/generate-code-password', async (req, res) => {
 
     // Registrar en historial
     await logToHistory(
-      connection, 
+      tempConnection, 
       username, 
       email, 
       code, 
@@ -296,18 +307,20 @@ router.post('/users/generate-code-password', async (req, res) => {
       text: `Su código para generar una contraseña temporal es: ${code}\n\nEste codigo expirará en 5 minutos.\n`
     });
 
-    await connection.commit();
+    await tempConnection.commit();
     res.json({ message: 'Código enviado exitosamente' });
   } catch (err) {
     console.error('Error:', err);
     res.status(500).json({ message: 'Error al generar el código' });
   } finally {
-    if (connection) {
-      try {
-        await connection.close();
-      } catch (err) {
-        console.error('Error cerrando la conexión:', err);
-      }
+    // Cerrar ambas conexiones
+    if (mainConnection) {
+      try { await mainConnection.close(); } 
+      catch (err) { console.error('Error cerrando conexión principal:', err); }
+    }
+    if (tempConnection) {
+      try { await tempConnection.close(); } 
+      catch (err) { console.error('Error cerrando conexión temporal:', err); }
     }
   }
 });
