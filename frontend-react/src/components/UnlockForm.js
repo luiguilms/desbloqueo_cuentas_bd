@@ -73,7 +73,7 @@ function UnlockForm() {
     try {
       setInputError("");
       const response = await fetch(
-        `http://localhost:3000/api/users/user-options/${username}`
+        `http://localhost:3000/api/users/user-options/${username}?selectedDatabase=${selectedDatabase}`
       );
       const data = await response.json();
 
@@ -95,6 +95,14 @@ function UnlockForm() {
       setInputError("Error de conexión al servidor");
     }
   };
+  // Llamar a loadDescOptions cuando el nombre de usuario o la base de datos seleccionada cambian
+  useEffect(() => {
+    if (username && selectedDatabase) {
+      loadDescOptions(username);
+    } else {
+      setDescOptions([]);  // Limpiar opciones si no hay nombre de usuario
+    }
+  }, [username, selectedDatabase]);
 
   const handleUsernameChange = (e) => {
     const value = e.target.value;
@@ -114,6 +122,8 @@ function UnlockForm() {
       setTempEmail(email);
       setTempDesc(selectedDesc);
       setIsPasswordMode(isPassword);
+
+      console.log("selectedDatabase antes de enviar:", selectedDatabase);
 
       const endpoint = isPassword
         ? "http://localhost:3000/api/users/generate-code-password"
@@ -173,6 +183,7 @@ function UnlockForm() {
           username: tempUsername,
           email: tempEmail,
           selectedDesc: tempDesc,
+          selectedDatabase,
           code,
         }),
       });
@@ -266,6 +277,8 @@ function UnlockForm() {
               onChange={(e) => setSelectedDatabase(e.target.value)}
             >
               <option value="bantotal">Bantotal</option>
+              <option value="arqui">Arquitectura</option>
+              <option value="qa">Calidad</option>
               {/* Puedes agregar más bases de datos aquí si es necesario */}
             </select>
           </div>

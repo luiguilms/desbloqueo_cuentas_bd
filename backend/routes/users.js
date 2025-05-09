@@ -7,7 +7,24 @@ const nodemailer = require('nodemailer');
 const os = require('os');
 const { execSync } = require('child_process');
 
-// Función para obtener información del cliente
+const getConnectionForDatabase = async (selectedDatabase) => {
+  console.log('Base de datos seleccionada:', selectedDatabase);  // Depuración
+  let dbConfig;
+  switch (selectedDatabase) {
+    case 'bantotal':
+      dbConfig = require('../config/dbConfig'); // Configuración de Bantotal
+      break;
+    case 'arqui':
+      dbConfig = require('../config/arquiDbConfig'); // Configuración de Arquitectura
+      break;
+    case 'qa':
+      dbConfig = require('../config/qaDbConfig'); // Configuración de Calidad
+      break;
+    default:
+      throw new Error("Base de datos no soportada");
+  }
+  return await dbConfig.getConnection();
+};
 // Función para obtener información del cliente
 function getClientInfo(req) {
   let ipAddress = '0.0.0.0';
@@ -109,16 +126,25 @@ const transporter = nodemailer.createTransport({
 });
 
 // Función para enviar correo al administrador
-async function sendAdminNotification(username, operationType) {
+async function sendAdminNotification(username, operationType, selectedDatabase, req) {
   const adminEmail = 'igs_llupacca@cajaarequipa.pe';
   const operationText = operationType === 'unlock' ? 'desbloqueo de cuenta' : 'cambio de contraseña temporal';
   
+  const databaseText = `Base de datos: ${selectedDatabase}`;
+  // Obtener información del cliente
+  const clientInfo = getClientInfo(req);
+  const clientDetailsText = `
+    IP del cliente: ${clientInfo.ipAddress}
+    Usuario de Windows: ${clientInfo.windowsUser}
+    Nombre de la máquina: ${clientInfo.machineName}
+  `;
+
   try {
     await transporter.sendMail({
       from: 'igs_llupacca@cajaarequipa.pe',
       to: adminEmail,
       subject: `Notificación: ${operationText.toUpperCase()} - Usuario ${username}`,
-      text: `Se ha realizado una operación de ${operationText} para el usuario ${username} exitosamente.\n\nFecha y hora: ${new Date().toLocaleString()}`
+      text: `Se ha realizado una operación de ${operationText} para el usuario ${username} exitosamente.\n\n${databaseText}\n\nDetalles del cliente:\n${clientDetailsText}\nFecha y hora: ${new Date().toLocaleString()}`
     });
     
     console.log(`Notificación enviada al administrador sobre ${operationText} de ${username}`);
@@ -131,6 +157,7 @@ async function sendAdminNotification(username, operationType) {
 // Ruta para generar y enviar código (desbloqueo)
 router.post('/users/generate-code', async (req, res) => {
   const { username, email, selectedDesc, selectedDatabase } = req.body;
+  console.log('Base de datos recibida inicialmente:', selectedDatabase);
   let mainConnection;
   let tempConnection;
   const clientInfo = getClientInfo(req);
@@ -142,18 +169,16 @@ router.post('/users/generate-code', async (req, res) => {
   }
 
   try {
-    if (selectedDatabase === 'bantotal') {
-      mainConnection = await getConnection();  // Conexión a la base de datos Bantotal
-    } else {
-      // Aquí podrías agregar lógica para otras bases de datos si es necesario
-      return res.status(400).send({ message: "Base de datos no soportada por el momento" });
-    }
+    console.log('Antes de obtener la conexión: ', selectedDatabase);
+    mainConnection = await getConnectionForDatabase(selectedDatabase);
 
     // Verificar si el usuario existe y es tipo 'F'
     const userResult = await mainConnection.execute(
       `SELECT CORREO FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1 AND TIPOUSER = 'F'`,
       [username.toUpperCase()]
     );
+
+    console.log('Base de datos seleccionada al conectar:', selectedDatabase);
 
     if (userResult.rows.length === 0) {
       return res.status(400).send({
@@ -229,6 +254,7 @@ router.post('/users/generate-code', async (req, res) => {
 // Ruta para generar y enviar código (cambio de contraseña)
 router.post('/users/generate-code-password', async (req, res) => {
   const { username, email, selectedDesc, selectedDatabase  } = req.body;
+  console.log('Base de datos recibida inicialmente:', selectedDatabase);
   let mainConnection;
   let tempConnection;
   const clientInfo = getClientInfo(req);
@@ -240,18 +266,16 @@ router.post('/users/generate-code-password', async (req, res) => {
   }
 
   try {
-    if (selectedDatabase === 'bantotal') {
-      mainConnection = await getConnection();  // Conexión a la base de datos Bantotal
-    } else {
-      // Aquí podrías agregar lógica para otras bases de datos si es necesario
-      return res.status(400).send({ message: "Base de datos no soportada por el momento" });
-    }
+    console.log('Antes de obtener la conexión: ', selectedDatabase);
+    mainConnection = await getConnectionForDatabase(selectedDatabase);
 
     // Verificar si el usuario existe y es tipo 'F'
     const userResult = await mainConnection.execute(
       `SELECT CORREO FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1 AND TIPOUSER = 'F'`,
       [username.toUpperCase()]
     );
+
+    console.log('Base de datos seleccionada al conectar:', selectedDatabase);
 
     if (userResult.rows.length === 0) {
       return res.status(400).send({
@@ -328,12 +352,13 @@ router.post('/users/generate-code-password', async (req, res) => {
 // Ruta para obtener opciones de NOMDESC
 router.get('/users/user-options/:username', async (req, res) => {
   const { username } = req.params;
+  const { selectedDatabase } = req.query;
   let connection;
   
   try {
-    connection = await getConnection();
+    connection = await getConnectionForDatabase(selectedDatabase);  
     
-    console.log("Buscando opciones para usuario:", username.toUpperCase());
+    //console.log("Buscando opciones para usuario:", username.toUpperCase());
 
     const userCheck = await connection.execute(
       `SELECT TIPOUSER, NOMDESC FROM SYSTABREP.SY_USERS_BT WHERE USERNAME = :1`,
@@ -398,11 +423,13 @@ router.get('/users/user-options/:username', async (req, res) => {
 
 // Ruta para desbloquear usuario (simplificada)
 router.post('/users/unlock', async (req, res) => {
-  const { username, email, code } = req.body;
+  const { username, email, code, selectedDatabase } = req.body;
   let mainConnection;
   let tempConnection;
   let codeVerified = false;
+  let message = ''; // Definir la variable 'message' antes de su uso
   try {
+    console.log('selectedDatabase recibido en desbloqueo:', selectedDatabase);
     tempConnection = await getTempCodesConnection();
 
     // Verificar solo el código
@@ -423,30 +450,51 @@ router.post('/users/unlock', async (req, res) => {
 
     codeVerified = true;
 
-    mainConnection = await getConnection();
+    // Verificar que el valor de selectedDatabase no sea undefined
+    console.log('selectedDatabase antes de la conexión:', selectedDatabase);  // Log para asegurar que está bien
+    if (!selectedDatabase || !['bantotal', 'arqui', 'qa'].includes(selectedDatabase)) {
+      return res.status(400).send({ message: "Base de datos no soportada" });
+    }
+    mainConnection = await getConnectionForDatabase(selectedDatabase);
 
-    const result = await mainConnection.execute(
-      `DECLARE
-         l_line VARCHAR2(32767);
-         l_status INTEGER;
-       BEGIN
-         DBMS_OUTPUT.ENABLE(32767);
-         SP_BD_DESBLOQUEO_CUENTA(:username);
-         DBMS_OUTPUT.GET_LINE(l_line, l_status);
-         :out := l_line;
-       END;`,
-      {
-        username: username.toUpperCase(),
-        out: { dir: oracledb.BIND_OUT, type: oracledb.STRING, maxSize: 32767 },
-      }
-    );
+    // Ejecutar el desbloqueo según la base de datos seleccionada
+    if (selectedDatabase === 'bantotal') {
+      // Para Bantotal, ejecutar el procedimiento almacenado
+      const result = await mainConnection.execute(
+        `DECLARE
+           l_line VARCHAR2(32767);
+           l_status INTEGER;
+         BEGIN
+           DBMS_OUTPUT.ENABLE(32767);
+           SP_BD_DESBLOQUEO_CUENTA(:username);
+           DBMS_OUTPUT.GET_LINE(l_line, l_status);
+           :out := l_line;
+         END;`,
+        {
+          username: username.toUpperCase(),
+          out: { dir: oracledb.BIND_OUT, type: oracledb.STRING, maxSize: 32767 },
+        }
+      );
 
-    const message = result.outBinds.out || "Usuario desbloqueado exitosamente";
+      message = result.outBinds.out || "Usuario desbloqueado exitosamente";
+
+    } else if (selectedDatabase === 'arqui' || selectedDatabase === 'qa') {
+      // Para Arqui y QA, ejecutar ALTER USER
+      await mainConnection.execute(
+        `ALTER USER ${username.toUpperCase()} ACCOUNT UNLOCK`
+      );
+      await mainConnection.commit();
+      message = 'Usuario desbloqueado exitosamente';
+
+    } else {
+      message = "Base de datos no soportada";
+      return res.status(400).send({ message });
+    }
 
     // Enviar notificación al administrador
-    await sendAdminNotification(username.toUpperCase(), 'unlock');
+    await sendAdminNotification(username.toUpperCase(), 'unlock', selectedDatabase,req);
     
-    res.status(200).send({ message });
+    return res.status(200).send({ message });
   } catch (err) {
     console.error("Error:", err);
     if (err.errorNum) {
@@ -497,12 +545,13 @@ router.post('/users/unlock', async (req, res) => {
 
 // Ruta para cambio de contraseña temporal (simplificada)
 router.post('/users/change-password', async (req, res) => {
-  const { username, email, code } = req.body;
+  const { username, email, code, selectedDatabase } = req.body;
   let mainConnection;
   let tempConnection;
   let codeVerified = false;
 
   try {
+    console.log('selectedDatabase recibido en cambio de contraseña:', selectedDatabase);
     // Conectar a la BD de códigos temporales
     tempConnection = await getTempCodesConnection();
     
@@ -525,39 +574,71 @@ router.post('/users/change-password', async (req, res) => {
     // Marcar código como verificado
     codeVerified = true;
     
-    // Conectar a la BD principal
-    mainConnection = await getConnection();
+    // Verificar que el valor de selectedDatabase no sea undefined
+    console.log('selectedDatabase antes de la conexión:', selectedDatabase);  // Log para asegurar que está bien
+    if (!selectedDatabase || !['bantotal', 'arqui', 'qa'].includes(selectedDatabase)) {
+      return res.status(400).send({ message: "Base de datos no soportada" });
+    }
+    mainConnection = await getConnectionForDatabase(selectedDatabase);
 
-    // Ejecutar procedimiento para cambio de contraseña
-    const result = await mainConnection.execute(
-      `DECLARE
-         l_line VARCHAR2(32767);
-         l_status INTEGER;
-       BEGIN
-         DBMS_OUTPUT.ENABLE(32767);
-         SP_BD_CAMBIO_PASSWD_CUENTA(:username);
-         DBMS_OUTPUT.GET_LINE(l_line, l_status);
-         :out := l_line;
-       END;`,
-      {
-        username: username.toUpperCase(),
-        out: { dir: oracledb.BIND_OUT, type: oracledb.STRING, maxSize: 32767 },
+    // Definir la respuesta que se enviará
+    let responseMessage = "";
+    let tempPassword = "";
+
+    // Ejecutar procedimiento según la base de datos seleccionada
+    if (selectedDatabase === 'bantotal') {
+      // Para Bantotal, ejecutar el procedimiento almacenado existente
+      const result = await mainConnection.execute(
+        `DECLARE
+           l_line VARCHAR2(32767);
+           l_status INTEGER;
+         BEGIN
+           DBMS_OUTPUT.ENABLE(32767);
+           SP_BD_CAMBIO_PASSWD_CUENTA(:username);
+           DBMS_OUTPUT.GET_LINE(l_line, l_status);
+           :out := l_line;
+         END;`,
+        {
+          username: username.toUpperCase(),
+          out: { dir: oracledb.BIND_OUT, type: oracledb.STRING, maxSize: 32767 },
+        }
+      );
+
+      const outputMessage = result.outBinds.out;
+      if (outputMessage && outputMessage.includes("temporal")) {
+        tempPassword = outputMessage.split(": ")[1];
+        responseMessage = "Contraseña temporal generada exitosamente";
+      } else {
+        responseMessage = outputMessage || "Contraseña temporal generada exitosamente";
       }
-    );
+    } else if (selectedDatabase === 'arqui' || selectedDatabase === 'qa') {
+      // Para Arqui y QA, generar contraseña temporal y usar ALTER USER
+      // Generar una contraseña temporal aleatoria con formato USERNAME_xxxx
+      tempPassword = `${username.toUpperCase()}_${Math.floor(1000 + Math.random() * 9000)}`;
+      
+      // Cambiar la contraseña del usuario y establecerla para que expire al primer uso
+      await mainConnection.execute(
+        `ALTER USER ${username.toUpperCase()} IDENTIFIED BY "${tempPassword}" PASSWORD EXPIRE`
+      );
+      await mainConnection.commit();
+      
+      responseMessage = "Contraseña temporal generada exitosamente";
+    } else {
+      return res.status(400).send({ message: "Base de datos no soportada" });
+    }
 
     // Enviar notificación al administrador
-    await sendAdminNotification(username.toUpperCase(), 'password');
+    await sendAdminNotification(username.toUpperCase(), 'password', selectedDatabase, req);
 
-    const outputMessage = result.outBinds.out;
-    if (outputMessage && outputMessage.includes("temporal")) {
-      const tempPassword = outputMessage.split(": ")[1];
+    // Responder al cliente
+    if (tempPassword) {
       res.status(200).send({ 
-        message: "Contraseña temporal generada exitosamente",
+        message: responseMessage,
         temporaryPassword: tempPassword
       });
     } else {
       res.status(200).send({ 
-        message: outputMessage || "Contraseña temporal generada exitosamente"
+        message: responseMessage
       });
     }
   } catch (err) {
