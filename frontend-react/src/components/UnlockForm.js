@@ -277,7 +277,7 @@ function UnlockForm() {
               onChange={(e) => setSelectedDatabase(e.target.value)}
             >
               <option value="bantotal">Bantotal</option>
-              <option value="arqui">Arquitectura</option>
+              <option value="bi">BI</option>
               <option value="qa">Calidad</option>
               {/* Puedes agregar más bases de datos aquí si es necesario */}
             </select>
