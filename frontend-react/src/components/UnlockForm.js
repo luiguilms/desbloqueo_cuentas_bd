@@ -53,7 +53,7 @@ function UnlockForm() {
   const [descOptions, setDescOptions] = useState([]);
   const [selectedDesc, setSelectedDesc] = useState("");
   const [message, setMessage] = useState("");
-  const [tempPassword, setTempPassword] = useState(""); // Estado para la contraseña temporal
+  const [tempPassword, setTempPassword] = useState("");
   const [error, setError] = useState("");
   const [inputError, setInputError] = useState("");
   const [showModal, setShowModal] = useState(false);
@@ -63,21 +63,23 @@ function UnlockForm() {
   const [isPasswordMode, setIsPasswordMode] = useState(false);
   const [selectedDatabase, setSelectedDatabase] = useState("bantotal");
 
-  useEffect(() => {
-    if (username) {
-      loadDescOptions(username);
-    }
-  }, [username]);
-
   const loadDescOptions = async (username) => {
+    if (!username || !selectedDatabase) {
+      setDescOptions([]);
+      return;
+    }
+
     try {
       setInputError("");
+      console.log(`Cargando opciones para usuario: ${username}, DB: ${selectedDatabase}`);
+      
       const response = await fetch(
         `http://localhost:3000/api/users/user-options/${username}?selectedDatabase=${selectedDatabase}`
       );
       const data = await response.json();
 
       if (!response.ok) {
+        console.error(`Error del servidor: ${response.status} - ${data.message}`);
         setInputError(data.message);
         setDescOptions([]);
         return;
@@ -86,7 +88,9 @@ function UnlockForm() {
       if (Array.isArray(data.options)) {
         setDescOptions(data.options);
         setInputError("");
+        console.log(`Opciones cargadas: ${data.options.length} elementos`);
       } else {
+        console.warn("Respuesta no contiene array de opciones:", data);
         setDescOptions([]);
       }
     } catch (err) {
@@ -95,20 +99,34 @@ function UnlockForm() {
       setInputError("Error de conexión al servidor");
     }
   };
-  // Llamar a loadDescOptions cuando el nombre de usuario o la base de datos seleccionada cambian
+
+  // PROBLEMA SOLUCIONADO: Solo un useEffect que maneja ambos cambios
   useEffect(() => {
     if (username && selectedDatabase) {
       loadDescOptions(username);
     } else {
-      setDescOptions([]);  // Limpiar opciones si no hay nombre de usuario
+      setDescOptions([]);
+      setSelectedDesc(""); // Limpiar descripción seleccionada también
     }
-  }, [username, selectedDatabase]);
+  }, [username, selectedDatabase]); // Dependencias correctas
 
   const handleUsernameChange = (e) => {
     const value = e.target.value;
     setUsername(value);
     setSelectedDesc("");
     setInputError("");
+    setError(""); // Limpiar errores previos
+    setMessage(""); // Limpiar mensajes previos
+  };
+
+  const handleDatabaseChange = (e) => {
+    const value = e.target.value;
+    setSelectedDatabase(value);
+    setSelectedDesc(""); // Limpiar descripción al cambiar BD
+    setInputError("");
+    setError("");
+    setMessage("");
+    console.log(`Base de datos cambiada a: ${value}`);
   };
 
   const handleGenerateCode = async (isPassword = false) => {
@@ -150,12 +168,12 @@ function UnlockForm() {
       } else {
         setError(data.message);
         setMessage("");
-        setTempPassword(""); // Limpiar contraseña temporal si hay error
+        setTempPassword("");
       }
     } catch (err) {
       setError("Error de conexión al servidor");
       setMessage("");
-      setTempPassword(""); // Limpiar contraseña temporal si hay error
+      setTempPassword("");
     }
   };
 
@@ -193,7 +211,6 @@ function UnlockForm() {
 
       if (response.ok) {
         setMessage(data.message);
-        // Capturar la contraseña temporal si está disponible
         if (data.temporaryPassword) {
           setTempPassword(data.temporaryPassword);
         } else {
@@ -209,19 +226,18 @@ function UnlockForm() {
         setTempUsername("");
         setTempEmail("");
         setTempDesc("");
-        // No reseteamos isPasswordMode para mantener consistente el UI
       } else {
         setError(data.message);
-        setTempPassword(""); // Limpiar contraseña temporal si hay error
+        setTempPassword("");
       }
     } catch (err) {
-      // Cerrar el modal también en caso de error de conexión
       setShowModal(false);
       setError("Error de conexión al servidor");
       setMessage("");
-      setTempPassword(""); // Limpiar contraseña temporal si hay error
+      setTempPassword("");
     }
   };
+
   return (
     <div className={`unlock-form ${showModal ? "blur-background" : ""}`}>
       <div className="header">
@@ -269,17 +285,15 @@ function UnlockForm() {
             </select>
           </div>
 
-          {/* Base de datos */}
           <div className="form-group">
             <label>Base de Datos:</label>
             <select
               value={selectedDatabase}
-              onChange={(e) => setSelectedDatabase(e.target.value)}
+              onChange={handleDatabaseChange}
             >
               <option value="bantotal">Bantotal</option>
               <option value="bi">BI</option>
-              <option value="qa">Calidad</option>
-              {/* Puedes agregar más bases de datos aquí si es necesario */}
+              <option value="dw">DWHOUSE</option>
             </select>
           </div>
 
@@ -297,7 +311,6 @@ function UnlockForm() {
         </form>
 
         {message && <div className="message success">{message}</div>}
-        {/* Mostrar la contraseña temporal si existe */}
         {tempPassword && (
           <div className="message password-box">
             <strong>Contraseña temporal:</strong> {tempPassword}

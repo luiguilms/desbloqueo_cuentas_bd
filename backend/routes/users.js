@@ -17,8 +17,8 @@ const getConnectionForDatabase = async (selectedDatabase) => {
     case 'bi':
       dbConfig = require('../config/biDbConfig'); // Configuración de BI
       break;
-    case 'qa':
-      dbConfig = require('../config/qaDbConfig'); // Configuración de Calidad
+    case 'dw':
+      dbConfig = require('../config/dwDbConfig'); // Configuración de DWHOUSE
       break;
     default:
       throw new Error("Base de datos no soportada");
@@ -178,6 +178,8 @@ router.post('/users/generate-code', async (req, res) => {
       userTable = 'SYSTABREP.SY_USERS_BI'; // Tabla para BI
     } else if (selectedDatabase === 'bantotal') {
       userTable = 'SYSTABREP.SY_USERS_BT'; // Tabla para Bantotal
+    } else if (selectedDatabase === 'dw') {
+      userTable = 'SYSTABREP.SY_USERS_DW'; // Tabla para DWHOUSE
     } else {
       return res.status(400).send({ message: 'Base de datos no soportada' });
     }
@@ -285,6 +287,8 @@ router.post('/users/generate-code-password', async (req, res) => {
       userTable = 'SYSTABREP.SY_USERS_BI'; // Tabla para BI
     } else if (selectedDatabase === 'bantotal') {
       userTable = 'SYSTABREP.SY_USERS_BT'; // Tabla para Bantotal
+    } else if (selectedDatabase === 'dw') {
+      userTable = 'SYSTABREP.SY_USERS_DW'; // Tabla para DWHOUSE
     } else {
       return res.status(400).send({ message: 'Base de datos no soportada' });
     }
@@ -379,12 +383,14 @@ router.get('/users/user-options/:username', async (req, res) => {
     // Obtener conexión con la base de datos seleccionada
     connection = await getConnectionForDatabase(selectedDatabase);
 
-    // Definir la tabla en base a la base de datos seleccionada (BT o BI)
+    // Definir la tabla en base a la base de datos seleccionada (BT o BI o DW)
     let userTable = '';
     if (selectedDatabase === 'bi') {
       userTable = 'SYSTABREP.SY_USERS_BI'; // Tabla para BI
     } else if (selectedDatabase === 'bantotal') {
       userTable = 'SYSTABREP.SY_USERS_BT'; // Tabla para Bantotal
+    } else if (selectedDatabase === 'dw') {
+      userTable = 'SYSTABREP.SY_USERS_DW'; // Tabla para DWHOUSE
     } else {
       return res.status(400).send({ message: 'Base de datos no soportada' });
     }
@@ -492,13 +498,13 @@ router.post('/users/unlock', async (req, res) => {
 
     // Verificar que el valor de selectedDatabase no sea undefined
     console.log('selectedDatabase antes de la conexión:', selectedDatabase);  // Log para asegurar que está bien
-    if (!selectedDatabase || !['bantotal', 'bi', 'qa'].includes(selectedDatabase)) {
+    if (!selectedDatabase || !['bantotal', 'bi', 'dw'].includes(selectedDatabase)) {
       return res.status(400).send({ message: "Base de datos no soportada" });
     }
     mainConnection = await getConnectionForDatabase(selectedDatabase);
 
     // Ejecutar el desbloqueo según la base de datos seleccionada
-    if (selectedDatabase === 'bantotal' || selectedDatabase === 'bi') {
+    if (selectedDatabase === 'bantotal' || selectedDatabase === 'bi' || selectedDatabase === 'dw') {
       // Para Bantotal, ejecutar el procedimiento almacenado
       const result = await mainConnection.execute(
         `DECLARE
@@ -517,14 +523,6 @@ router.post('/users/unlock', async (req, res) => {
       );
 
       message = result.outBinds.out || "Usuario desbloqueado exitosamente";
-
-    } else if (selectedDatabase === 'qa') {
-      // Para qa, ejecutar ALTER USER
-      await mainConnection.execute(
-        `ALTER USER ${username.toUpperCase()} ACCOUNT UNLOCK`
-      );
-      await mainConnection.commit();
-      message = 'Usuario desbloqueado exitosamente';
 
     } else {
       message = "Base de datos no soportada";
@@ -545,7 +543,7 @@ router.post('/users/unlock', async (req, res) => {
           });
         case 20002:
           return res.status(400).send({
-            message: "El usuario no está registrado en la Base de Datos de Bantotal o no esta habilitado.",
+            message: "El usuario no está registrado en la Base de Datos o no esta habilitado.",
           });
         default:
           return res.status(500).send({
@@ -616,7 +614,7 @@ router.post('/users/change-password', async (req, res) => {
     
     // Verificar que el valor de selectedDatabase no sea undefined
     console.log('selectedDatabase antes de la conexión:', selectedDatabase);  // Log para asegurar que está bien
-    if (!selectedDatabase || !['bantotal', 'bi', 'qa'].includes(selectedDatabase)) {
+    if (!selectedDatabase || !['bantotal', 'bi', 'dw'].includes(selectedDatabase)) {
       return res.status(400).send({ message: "Base de datos no soportada" });
     }
     mainConnection = await getConnectionForDatabase(selectedDatabase);
@@ -626,7 +624,7 @@ router.post('/users/change-password', async (req, res) => {
     let tempPassword = "";
 
     // Ejecutar procedimiento según la base de datos seleccionada
-    if (selectedDatabase === 'bantotal' || selectedDatabase === 'bi') {
+    if (selectedDatabase === 'bantotal' || selectedDatabase === 'bi' || selectedDatabase === 'dw') {
       // Para Bantotal, ejecutar el procedimiento almacenado existente
       const result = await mainConnection.execute(
         `DECLARE
@@ -651,18 +649,6 @@ router.post('/users/change-password', async (req, res) => {
       } else {
         responseMessage = outputMessage || "Contraseña temporal generada exitosamente";
       }
-    } else if (selectedDatabase === 'qa') {
-      // Para qa, generar contraseña temporal y usar ALTER USER
-      // Generar una contraseña temporal aleatoria con formato USERNAME_xxxx
-      tempPassword = `${username.toUpperCase()}_${Math.floor(1000 + Math.random() * 9000)}`;
-      
-      // Cambiar la contraseña del usuario y establecerla para que expire al primer uso
-      await mainConnection.execute(
-        `ALTER USER ${username.toUpperCase()} IDENTIFIED BY "${tempPassword}" PASSWORD EXPIRE`
-      );
-      await mainConnection.commit();
-      
-      responseMessage = "Contraseña temporal generada exitosamente";
     } else {
       return res.status(400).send({ message: "Base de datos no soportada" });
     }
@@ -692,7 +678,7 @@ router.post('/users/change-password', async (req, res) => {
       }
       if (err.message.includes("-29999")) {
         return res.status(400).send({
-          message: "El usuario no está registrado en la Base de Datos de Bantotal o no esta habilitado."
+          message: "El usuario no está registrado en la Base de Datos o no esta habilitado."
         });
       }
     }
