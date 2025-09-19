@@ -276,7 +276,7 @@ function UnlockForm() {
               required
               disabled={inputError !== ""}
             >
-              <option value="">Seleccione su descripción...</option>
+              <option value="">Seleccione su nombre...</option>
               {descOptions.map((desc, index) => (
                 <option key={index} value={desc}>
                   {desc}
